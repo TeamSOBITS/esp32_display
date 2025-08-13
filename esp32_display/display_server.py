@@ -8,18 +8,26 @@ import serial
 import re
 import cv2
 
-# シリアルポート設定とJPEG品質
-PORT = '/dev/ttyACM0'  # 適切なポートに変更してください
 BAUDRATE = 3000000
-JPEG_QUALITY = 30 # 0-100の範囲で設定
 
 class DisplayActionServer(Node):
     def __init__(self):
         super().__init__('display_server')
+
+        self.declare_parameter('port', '/dev/ttyACM0')
+        self.declare_parameter('quality', 30)
+        self.declare_parameter('image_hight', 240)
+        self.declare_parameter('image_width', 320)        
+
+        self.port = self.get_parameter('port').get_parameter_value().string_value
+        self.quality = self.get_parameter('quality').get_parameter_value().integer_value
+        self.image_hight = self.get_parameter('image_hight').get_parameter_value().integer_value
+        self.image_width = self.get_parameter('image_width').get_parameter_value().integer_value
+
         self.ser = None
         try:
-            self.ser = serial.Serial(PORT, BAUDRATE, timeout=1)
-            self.get_logger().info(f"シリアルポート {PORT} に接続しました。")
+            self.ser = serial.Serial(self.port, BAUDRATE, timeout=1)
+            self.get_logger().info(f"シリアルポート {self.port} に接続しました。")
         except serial.SerialException as e:
             self.get_logger().error(f"シリアルポートに接続できませんでした: {e}")
 
@@ -66,10 +74,11 @@ class DisplayActionServer(Node):
             return self._handle_abort(goal_handle, f"Failed to load image: {file_path}")
 
         # 画像処理をループの外に移動して一度だけ実行
-        resized_frame = cv2.resize(frame, (320, 240))
+        resized_frame = cv2.resize(frame, (self.image_width, self.image_hight))
         rotated_frame = cv2.rotate(resized_frame, cv2.ROTATE_90_CLOCKWISE)
 
-        result_flag, img_encoded = cv2.imencode('.jpg', rotated_frame, [int(cv2.IMWRITE_JPEG_QUALITY), JPEG_QUALITY])
+        # ここを修正しました: cv2.IMWRITE_JPEG_QUALITY を使用
+        result_flag, img_encoded = cv2.imencode('.jpg', rotated_frame, [int(cv2.IMWRITE_JPEG_QUALITY), self.quality])
         if not result_flag:
             return self._handle_abort(goal_handle, "JPEG compression failed.")
 
@@ -80,6 +89,9 @@ class DisplayActionServer(Node):
         img_size2 = (img_size >> 8) & 0xFF
         img_size3 = img_size & 0xFF
         data_packet = bytearray([0xFF, 0xD8, 0xEA, 0x01, img_size1, img_size2, img_size3, 0x00, 0x00, 0x00])
+
+        # 改善点: ヘッダーと画像データを結合して一度に送信
+        full_data = data_packet + img_buf
 
         start_time = time.time()
         last_feedback_time = start_time
@@ -95,8 +107,7 @@ class DisplayActionServer(Node):
 
             # 画像データの送信
             try:
-                self.ser.write(data_packet)
-                self.ser.write(img_buf)
+                self.ser.write(full_data)
                 self.get_logger().debug(f"画像データ ({img_size} bytes) を送信しました。")
             except serial.SerialTimeoutException:
                 return self._handle_abort(goal_handle, "Serial write timeout.")
