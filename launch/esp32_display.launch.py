@@ -1,4 +1,19 @@
-from launch import LaunchDescription 
+from launch import LaunchDescription
 from launch_ros.actions import Node
-from launch.substitutions import LaunchConfiguration
-from launch.actions import DeclareLaunchArgument
+
+def generate_launch_description():
+    return LaunchDescription([
+        Node(
+            package='esp32_display',
+            executable='display_server',
+            name='display_server_node',
+            output='screen',
+            emulate_tty=True,
+            parameters=[{
+                'port': '/dev/ttyACM0',
+                'quality': 50,
+                'image_hight': 240,
+                'image_width': 320
+            }]
+        ),
+    ])
