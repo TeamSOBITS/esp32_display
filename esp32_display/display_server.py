@@ -3,75 +3,122 @@ from rclpy.node import Node
 from rclpy.action import ActionServer, CancelResponse
 from sobits_interfaces.action import ChatLlmRecognition
 import time
+import os
+import serial
+import re
+import cv2
+
+# シリアルポート設定とJPEG品質
+PORT = '/dev/ttyACM0'  # 適切なポートに変更してください
+BAUDRATE = 3000000
+JPEG_QUALITY = 30 # 0-100の範囲で設定
 
 class DisplayActionServer(Node):
     def __init__(self):
         super().__init__('display_server')
+        self.ser = None
+        try:
+            self.ser = serial.Serial(PORT, BAUDRATE, timeout=1)
+            self.get_logger().info(f"シリアルポート {PORT} に接続しました。")
+        except serial.SerialException as e:
+            self.get_logger().error(f"シリアルポートに接続できませんでした: {e}")
+
         self._action_server = ActionServer(
-            self,                               # ノードインスタンス
-            ChatLlmRecognition,                 # アクションインターフェース
-            'esp32_display',                    # アクション名
-            self.execute_callback,              # ゴールの実行時に呼ばれるコールバック関数
-            cancel_callback=self.cancel_callback # キャンセルリクエスト時に呼ばれるコールバック関数
+            self,
+            ChatLlmRecognition,
+            'esp32_display',
+            self.execute_callback,
+            cancel_callback=self.cancel_callback
         )
         self.get_logger().info('Display action server is ready')
+
+    def _handle_abort(self, goal_handle, message):
+        """アボート処理を共通化するためのヘルパー関数"""
+        self.get_logger().error(message)
+        goal_handle.abort()
+        result = ChatLlmRecognition.Result()
+        result.result = message
+        return result
 
     def execute_callback(self, goal_handle):
         self.get_logger().info('Executing goal...')
 
-        topic_name = goal_handle.request.room_name
         file_path = goal_handle.request.request
-        seconds = goal_handle.request.model_name
+        seconds_str = goal_handle.request.model_name
+        topic_name = goal_handle.request.room_name  #絶対に消すな
 
-        # secondsを整数に変換する
+        if self.ser is None:
+            return self._handle_abort(goal_handle, "Serial port not available.")
+
         try:
-            seconds = int(float(seconds))
-        except ValueError:
-            # 変換に失敗した場合はエラーログを出力し、ゴールを中断
-            self.get_logger().error(f"Invalid seconds: {seconds}")
-            goal_handle.abort()
-            result = ChatLlmRecognition.Result()
-            result.result = "Invalid seconds: not a number"
-            return result
+            total_seconds = int(float(seconds_str))
+        except (ValueError, TypeError):
+            return self._handle_abort(goal_handle, f"Invalid seconds: {seconds_str}")
 
-        # secondsが0以下の場合はゴールを中断
-        if seconds <= 0:
-            self.get_logger().info('seconds <= 0, aborting goal')
-            goal_handle.abort()
-            result = ChatLlmRecognition.Result()
-            result.result = "Invalid seconds: <= 0"
-            return result
-        #
-        #
-        #
-        #            
-        #kokode syori
-        #
-        #
-        #
-        #
+        if total_seconds <= 0:
+            return self._handle_abort(goal_handle, f"Invalid seconds: {total_seconds} <= 0")
 
-        # フィードバックメッセージを作成
-        feedback = ChatLlmRecognition.Feedback()
+        if not file_path or not os.path.exists(file_path):
+            return self._handle_abort(goal_handle, f"Invalid file path: {file_path}")
 
-        # secondsの回数だけループ
-        for i in range(seconds):
-            # サーバーの処理を一度だけ実行し、キャンセルリクエストをチェック
-            rclpy.spin_once(self, timeout_sec=1.0)
-            
-            # キャンセルリクエストがあるか確認
+        frame = cv2.imread(file_path)
+        if frame is None:
+            return self._handle_abort(goal_handle, f"Failed to load image: {file_path}")
+
+        # 画像処理をループの外に移動して一度だけ実行
+        resized_frame = cv2.resize(frame, (320, 240))
+        rotated_frame = cv2.rotate(resized_frame, cv2.ROTATE_90_CLOCKWISE)
+
+        result_flag, img_encoded = cv2.imencode('.jpg', rotated_frame, [int(cv2.IMWRITE_JPEG_QUALITY), JPEG_QUALITY])
+        if not result_flag:
+            return self._handle_abort(goal_handle, "JPEG compression failed.")
+
+        img_buf = img_encoded.tobytes()
+        img_size = len(img_buf)
+
+        img_size1 = (img_size >> 16) & 0xFF
+        img_size2 = (img_size >> 8) & 0xFF
+        img_size3 = img_size & 0xFF
+        data_packet = bytearray([0xFF, 0xD8, 0xEA, 0x01, img_size1, img_size2, img_size3, 0x00, 0x00, 0x00])
+
+        start_time = time.time()
+        last_feedback_time = start_time
+
+        while True:
+            # キャンセルリクエストのチェック
             if goal_handle.is_cancel_requested:
                 self.get_logger().info('Goal canceled during execution')
-                # ゴールをキャンセル済みに設定
                 goal_handle.canceled()
                 result = ChatLlmRecognition.Result()
                 result.result = "Goal canceled by client request"
                 return result
 
-            # フィードバックメッセージを更新
-            feedback.wip_result = f"{seconds - i}"
-            goal_handle.publish_feedback(feedback)
-            self.get_logger().info(f'Publishing feedback: {feedback.wip_result}')
+            # 画像データの送信
+            try:
+                self.ser.write(data_packet)
+                self.ser.write(img_buf)
+                self.get_logger().debug(f"画像データ ({img_size} bytes) を送信しました。")
+            except serial.SerialTimeoutException:
+                return self._handle_abort(goal_handle, "Serial write timeout.")
+
+            current_time = time.time()
+            elapsed_time = current_time - start_time
+
+            # 1秒ごとにフィードバックを送信
+            if current_time - last_feedback_time >= 1.0:
+                feedback = ChatLlmRecognition.Feedback()
+                remaining_time = max(0, total_seconds - int(elapsed_time))
+                feedback.wip_result = str(remaining_time)
+                goal_handle.publish_feedback(feedback)
+                self.get_logger().info(f'Publishing feedback: {feedback.wip_result}')
+                last_feedback_time = current_time
+
+            # 指定された時間が経過したらループを終了
+            if elapsed_time >= total_seconds:
+                break
+            
+            # 0.08秒の周期を保つための待機
+            time.sleep(0.08)
 
         goal_handle.succeed()
         self.get_logger().info('Goal succeeded!')
@@ -86,8 +133,10 @@ class DisplayActionServer(Node):
 def main(args=None):
     rclpy.init(args=args)
     server = DisplayActionServer()
-    while True:
-      rclpy.spin_once(server)
+    while rclpy.ok():
+        rclpy.spin_once(server) #絶対に消すな
+    server.destroy_node()
     rclpy.shutdown()
+
 if __name__ == '__main__':
     main()
