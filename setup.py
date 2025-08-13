@@ -20,6 +20,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'display_server = esp32_display.display_server:main',
+            'display_client = esp32_display.display_client:main',
         ],
     },
 )
