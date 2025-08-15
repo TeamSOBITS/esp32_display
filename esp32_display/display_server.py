@@ -9,6 +9,9 @@ import os
 import serial
 import cv2
 from rclpy.qos import QoSProfile, qos_profile_sensor_data, HistoryPolicy, ReliabilityPolicy
+from ament_index_python.packages import get_package_share_directory
+import threading
+import pulsectl
 
 BAUDRATE = 3000000
 
@@ -25,6 +28,12 @@ class DisplayActionServer(Node):
         self.quality = self.get_parameter('quality').get_parameter_value().integer_value
         self.image_hight = self.get_parameter('image_hight').get_parameter_value().integer_value
         self.image_width = self.get_parameter('image_width').get_parameter_value().integer_value
+
+        share_dir = get_package_share_directory('esp32_display')
+        mic_image_dir = os.path.join(os.path.abspath(os.path.join(share_dir, '..', '..', '..', '..')),
+                                        'src', 'esp32_display', 'images')
+        os.makedirs(mic_image_dir, exist_ok=True)
+        self.mic_image_path = os.path.join(mic_image_dir, 'mic.jpeg')
 
         self.ser = None
         try:
@@ -43,6 +52,84 @@ class DisplayActionServer(Node):
         self.get_logger().info('Display action server is ready')
         self.bridge = CvBridge()
         self.latest_frame = None
+
+        self.is_action_active = False
+        self.is_mic_in_use = False
+        self.pulse = None
+        self.mic_image = None
+        
+        # スレッドの停止フラグ
+        self.stop_threads = threading.Event()
+        
+        self._setup_mic_monitor()
+
+    def __del__(self):
+        # オブジェクトが破棄されるときにスレッドを安全に停止
+        self.stop_threads.set()
+        if self.pulse_thread.is_alive():
+            self.pulse.event_listen_stop()
+            self.pulse_thread.join()
+        if self.mic_send_thread.is_alive():
+            self.mic_send_thread.join()
+
+    def _setup_mic_monitor(self):
+        # マイク画像の事前読み込み
+        if not os.path.exists(self.mic_image_path):
+            self.get_logger().error(f"Mic image not found at: {self.mic_image_path}")
+        else:
+            self.mic_image = cv2.imread(self.mic_image_path)
+            if self.mic_image is None:
+                self.get_logger().error(f"Failed to load mic image: {self.mic_image_path}")
+        
+        # PulseAudioのイベントリスナーを別スレッドで開始
+        try:
+            self.pulse = pulsectl.Pulse('mic-monitor')
+            self.pulse_thread = threading.Thread(target=self._start_pulse_listener, daemon=True)
+            self.pulse_thread.start()
+            self.get_logger().info("Started PulseAudio monitor thread.")
+        except Exception as e:
+            self.get_logger().error(f"Could not start PulseAudio monitor: {e}")
+            
+        # マイクの使用状況に応じた画像送信ループを別スレッドで開始
+        self.mic_send_thread = threading.Thread(target=self._mic_send_loop, daemon=True)
+        self.mic_send_thread.start()
+        self.get_logger().info("Started mic image sending thread.")
+
+    def _start_pulse_listener(self):
+        self.pulse.event_mask_set('source_output')
+        self.pulse.event_callback_set(self.on_source_output_event_with_send)
+        try:
+            # stop_threadsが設定されるまでイベントリスナーをブロックする
+            self.pulse.event_listen(timeout=None)
+        except pulsectl.PulseError:
+            pass
+        except Exception as e:
+            self.get_logger().error(f"Error in PulseAudio event listener: {e}")
+
+    def _mic_send_loop(self):
+        while not self.stop_threads.is_set():
+            if self.is_mic_in_use and not self.is_action_active:
+                if self.mic_image is not None and self.ser is not None:
+                    # 画像の送信
+                    if not self._send_image_data(self.mic_image, self.quality):
+                        self.get_logger().error("Failed to send mic image during loop.")
+            
+            # 1秒ごとにループ
+            time.sleep(1.0)
+            
+    def on_source_output_event_with_send(self, event):
+        """
+        マイクイベントが発生したときに呼び出される。
+        フラグを更新するのみで、画像送信は_mic_send_loopで行う。
+        """
+        if event.t == 'new':
+            self.is_mic_in_use = True
+            self.get_logger().info("➡️ デフォルトマイクが使用され始めました！")
+        
+        elif event.t == 'remove':
+            self.is_mic_in_use = False
+            self.get_logger().info("入力ストリームが削除されました: ID=%d" % event.index)
+            # 必要であれば、マイク使用終了時の処理を追加
 
     def _handle_abort(self, goal_handle, message):
         self.get_logger().error(message)
@@ -163,19 +250,23 @@ class DisplayActionServer(Node):
     
     def execute_callback(self, goal_handle):
         self.get_logger().info('Executing goal...')
+        self.is_action_active = True
 
         file_path = goal_handle.request.request
         seconds_str = goal_handle.request.model_name
         topic_name = goal_handle.request.room_name
 
         if self.ser is None:
+            self.is_action_active = False
             return self._handle_abort(goal_handle, "Serial port not available.")
 
         try:
             total_seconds = int(float(seconds_str))
             if total_seconds <= 0:
+                self.is_action_active = False
                 return self._handle_abort(goal_handle, f"Invalid seconds: {total_seconds} <= 0")
         except (ValueError, TypeError):
+            self.is_action_active = False
             return self._handle_abort(goal_handle, f"Invalid seconds: {seconds_str}")
 
         if not file_path and topic_name:
@@ -193,20 +284,25 @@ class DisplayActionServer(Node):
             result = self._execute_common_loop(goal_handle, frame_getter, total_seconds)
             
             self.destroy_subscription(sub)
+            self.is_action_active = False
             return result
 
         elif file_path:
             if not os.path.exists(file_path):
+                self.is_action_active = False
                 return self._handle_abort(goal_handle, f"Invalid file path: {file_path}")
 
             frame = cv2.imread(file_path)
             if frame is None:
+                self.is_action_active = False
                 return self._handle_abort(goal_handle, f"Failed to load image: {file_path}")
 
             result = self._execute_common_loop(goal_handle, frame, total_seconds)
+            self.is_action_active = False
             return result
         
         else:
+            self.is_action_active = False
             return self._handle_abort(goal_handle, "Either file_path or topic_name must be provided.")
 
     def cancel_callback(self, goal_handle):

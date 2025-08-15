@@ -17,6 +17,8 @@ sudo apt update -y
 yes | sudo apt install -y ros-humble-vision-msgs
 echo "System dependencies installed."
 
+echo "Install pulsectl"
+pip3 install pulsectl -y
 
 SOBITS_MSGS_REPO="sobits_interfaces"
 # Check if the repository already exists

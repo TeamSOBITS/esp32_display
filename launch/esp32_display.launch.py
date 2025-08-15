@@ -11,7 +11,7 @@ def generate_launch_description():
             emulate_tty=True,
             parameters=[{
                 'port': '/dev/ttyACM0',
-                'quality': 50,
+                'quality': 30,
                 'image_hight': 240,
                 'image_width': 320
             }]
