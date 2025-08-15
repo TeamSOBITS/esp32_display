@@ -54,8 +54,8 @@ public:
   }
 
   void main() {
-    // 最後にデータを受信してから2秒以上経過しているかチェック
-    if (millis() - lastSerialDataTime > 2000) {
+    // 最後にデータを受信してから1秒以上経過しているかチェック
+    if (millis() - lastSerialDataTime > 1000) {
       if (Serial.available() == 0) {
         handleBlink();
       } else {
