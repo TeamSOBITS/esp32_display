@@ -9,7 +9,7 @@ import time
 import os
 import serial
 import cv2
-from rclpy.qos import qos_profile_sensor_data
+from rclpy.qos import QoSProfile, qos_profile_sensor_data, HistoryPolicy, ReliabilityPolicy
 from ament_index_python.packages import get_package_share_directory
 import threading
 import pulsectl
@@ -176,6 +176,28 @@ class DisplayActionServer(Node):
             return True
         except Exception:
             return False
+            
+    def _get_topic_qos_profile(self, topic_name):
+        try:
+            publishers_info = self.get_publishers_info_by_topic(topic_name)
+            
+            if not publishers_info:
+                self.get_logger().warn(f"No publishers found for topic '{topic_name}'. Using default QoS profile.")
+                return qos_profile_sensor_data
+
+            qos_profile = publishers_info[0].qos_profile
+            self.get_logger().info(f"Obtained QoS profile for topic '{topic_name}'.")
+
+            history_policy = "KEEP_LAST" if qos_profile.history == HistoryPolicy.KEEP_LAST else "KEEP_ALL"
+            reliability_policy = "RELIABLE" if qos_profile.reliability == ReliabilityPolicy.RELIABLE else "BEST_EFFORT"
+            self.get_logger().info(f"  - History: {history_policy}")
+            self.get_logger().info(f"  - Reliability: {reliability_policy}")
+
+            return qos_profile
+        
+        except Exception as e:
+            self.get_logger().error(f"Error while getting QoS profile: {e}")
+            return qos_profile_sensor_data
 
     def execute_callback(self, goal_handle):
         self.get_logger().info('Executing goal...')
@@ -204,7 +226,8 @@ class DisplayActionServer(Node):
 
         try:
             if not file_path and topic_name:
-                sub_qos_profile = qos_profile_sensor_data
+                self.get_logger().info(f"Subscribing to topic: {topic_name}")
+                sub_qos_profile = self._get_topic_qos_profile(topic_name)
                 sub = self.create_subscription(
                     Image, topic_name, self._image_callback, sub_qos_profile
                 )
