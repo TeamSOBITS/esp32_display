@@ -99,29 +99,28 @@
 
 <!-- 実行・操作方法 -->
 ## 実行・操作方法
-以下の状態において以下の機能を使用できます．
+以下のモードを使用可能です．
 
-- ESP32へ電源供給のみしている場合 (PCと通信していない場合)
-    - 目のまばたきが表示される
-- [esp32_display.launch.py](launch/esp32_display.launch.py)を起動した場合
-    - [Speech Recognition Whisper](https://github.com/TeamSOBITS/speech_recognition_whisper), [Speech Recognition Nemo](https://github.com/TeamSOBITS/speech_recognition_nemo), [Speech Recognition Vosk](https://github.com/TeamSOBITS/speech_recognition_vosk)を使用している場合
-        - マイクの使用を自動で検知して[マイク画像](images/mic.png)が表示される
-    - [Sobits TTS](https://github.com/TeamSOBITS/sobits_tts)を使用している場合
-        - 発話を自動で検知して[スピーカー画像](images/speaker.png)が表示される
-    - [display_client.py](esp32_display/display_client.py)を起動した場合
-        - Image型のTopic名 or 画像の絶対パスと，表示させたい秒数を送信することで，画像を指定秒数だけ表示させる．(任意のタイミングでキャンセル可能)
+|モード | 説明 | 発動条件 |
+| --- | --- | --- |
+| まばたき表示 | 目のまばたきを表示します | ESP32への電源供給 |
+| マイク画像表示 | 音声認識時にマイクの使用を自動で検出しマイク画像を表示します | [esp32_display.launch.py](launch/esp32_display.launch.py)の起動|
+| スピーカー画像表示 | [Sobits TTS](https://github.com/TeamSOBITS/sobits_tts)使用時に発話を自動で検出しスピーカー画像を表示します | [esp32_display.launch.py](launch/esp32_display.launch.py)の起動
+| 静止画像表示 | 画像の絶対パスと表示させたい秒数を送信することで，指定秒数だけ表示させる．(任意のタイミングでキャンセル可能) | [esp32_display.launch.py](launch/esp32_display.launch.py)，[display_client.py](esp32_display/display_client.py)の起動|
+| 画像トピック表示 | 画像のトピック名と表示させたい秒数を送信することで，指定秒数だけ表示させる．(任意のタイミングでキャンセル可能) | [esp32_display.launch.py](launch/esp32_display.launch.py)，[display_client.py](esp32_display/display_client.py)の起動|
 
-1. [esp32_display.launch.py](launch/esp32_display.launch.py)を起動
+1. esp32と接続
+2. [esp32_display.launch.py](launch/esp32_display.launch.py)を起動
    ```sh
    ros2 launch esp32_display esp32_display.launch.py
    ```
-2. [display_client.py](esp32_display/display_client.py)を起動
+3. [display_client.py](esp32_display/display_client.py)を起動
    ```sh
    ros2 run esp32_display display_client.py
    ```
-    - トピックを送信する場合
+    - トピック名を送信する場合
     ```sh
-        topic_name = "/image_raw"
+        topic_name = "トピック名"
         file_path = ""
     ```
     - 静止画を送信する場合
@@ -129,18 +128,7 @@
         topic_name = ""
         file_path = "画像ファイルの絶対パス"
     ```
-- 画像ファイル対応形式
-    - Windowsビットマップ: .bmp, .dib
-    - JPEG: .jpeg, .jpg, .jpe
-    - JPEG 2000: .jp2
-    - PNG: .png
-    - WebP: .webp
-    - ポータブル画像フォーマット: .pbm,pgm, 	.ppm, .pxm, .pnm
-    - PFM: .pfm
-    - Sun rasters: .sr, .ras
-    - TIFF: .tiff, .tif
-    - OpenEXR: .exr
-    - Radiance HDR: .hdr, .pic   
+- 画像ファイルはjpegやpngなどの形式に対応しています 
 
 <p align="right">(<a href="#readme-top">上に戻る</a>)</p>
 
@@ -149,7 +137,6 @@
 
 | パラメータ | 説明 | デフォルト値 |
 | --- | --- | --- |
-| port | マイコンとのシリアルポート名 | /dev/ttyACM0 |
 | quality | ディスプレイに描画する画像の品質．最小値1，最大値100．高いほど高画質．マイコンの性能上，320×240のサイズでは50が限界． | 30 |
 | image_hight | ディスプレイに描画する画像の高さ | 240 |
 | image_width | ディスプレイに描画する画像の幅 | 320 |
@@ -160,7 +147,6 @@
 
 <!-- マイルストーン -->
 ## マイルストーン
-- シリアルポート自動識別機能追加
 - 人検出し瞳孔を追従させる機能追加
 - 独自interface型作成
 

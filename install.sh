@@ -31,4 +31,12 @@ else
 fi
 
 
+echo 'SUBSYSTEM=="tty", ATTRS{idVendor}=="303a", ATTRS{idProduct}=="1001", ATTRS{serial}=="74:4D:BD:7F:1B:28", MODE="0666", SYMLINK+="esp32_board_a"' | sudo tee /etc/udev/rules.d/99-esp32.rules
+
+echo 'SUBSYSTEM=="tty", ATTRS{idVendor}=="303a", ATTRS{idProduct}=="1001", ATTRS{serial}=="30:ED:A0:A8:A4:DC", MODE="0666", SYMLINK+="esp32_board_b"' | sudo tee -a /etc/udev/rules.d/99-esp32.rules 
+
+sudo udevadm control --reload-rules
+
+sudo udevadm trigger
+
 echo "╚══╣ Install: speech_recognition_nemo (FINISHED) ╠══╝"

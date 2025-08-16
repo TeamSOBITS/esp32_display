@@ -20,22 +20,18 @@ class DisplayActionServer(Node):
     def __init__(self):
         super().__init__('display_server')
 
-        self.declare_parameter('port', '/dev/ttyACM0')
+        # パラメータでのポート宣言を削除
         self.declare_parameter('quality', 30)
         self.declare_parameter('image_hight', 240)
         self.declare_parameter('image_width', 320)
 
-        self.port = self.get_parameter('port').get_parameter_value().string_value
         self.quality = self.get_parameter('quality').get_parameter_value().integer_value
         self.image_hight = self.get_parameter('image_hight').get_parameter_value().integer_value
         self.image_width = self.get_parameter('image_width').get_parameter_value().integer_value
 
-        self.ser = None
-        try:
-            self.ser = serial.Serial(self.port, BAUDRATE, timeout=1)
-            self.get_logger().info(f"Connected to serial port {self.port}.")
-        except serial.SerialException as e:
-            self.get_logger().error(f"Could not connect to serial port: {e}")
+        self.ser = self._connect_to_serial()
+        if self.ser is None:
+            self.get_logger().error("Could not connect to any serial port.")
 
         self._action_server = ActionServer(
             self,
@@ -88,6 +84,19 @@ class DisplayActionServer(Node):
 
         self.tts_send_thread = threading.Thread(target=self._tts_send_loop, daemon=True)
         self.tts_send_thread.start()
+
+    def _connect_to_serial(self):
+        # 試行するポートのリストを内部的に定義
+        ports_to_try = ['/dev/esp32_board_a', '/dev/esp32_board_b']
+        for port in ports_to_try:
+            try:
+                self.get_logger().info(f"Trying to connect to serial port {port}...")
+                ser = serial.Serial(port, BAUDRATE, timeout=1)
+                self.get_logger().info(f"Connected to serial port {port}.")
+                return ser
+            except serial.SerialException as e:
+                self.get_logger().warn(f"Could not connect to {port}: {e}")
+        return None
 
     def __del__(self):
         self.stop_threads.set()
@@ -254,8 +263,10 @@ class DisplayActionServer(Node):
     def _execute_common_loop(self, goal_handle, frame_getter, total_seconds):
         start_time = time.time()
         last_feedback_time = start_time
+        
         while time.time() - start_time < total_seconds:
             rclpy.spin_once(self, timeout_sec=0.01)
+            
             if goal_handle.is_cancel_requested:
                 goal_handle.canceled()
                 result = ChatLlmRecognition.Result()
@@ -279,10 +290,19 @@ class DisplayActionServer(Node):
                     result.result = "Failed to send image"
                     return result
 
-            if time.time() - last_feedback_time >= 1.0:
-                last_feedback_time = time.time()
+            # 1秒ごとにフィードバックを送信
+            current_time = time.time()
+            if current_time - last_feedback_time >= 1.0:
+                last_feedback_time = current_time
+                
+                # 残り時間を計算
+                elapsed_time = current_time - start_time
+                remaining_time = max(0, total_seconds - elapsed_time)
+                
                 feedback = ChatLlmRecognition.Feedback()
-                feedback.wip_result = "running"
+                # wip_result フィールドを使って残り秒数を文字列として送信
+                feedback.wip_result = f"Remaining seconds: {int(remaining_time)}"
+                self.get_logger().info(f"Publishing feedback: {feedback.wip_result}")
                 goal_handle.publish_feedback(feedback)
 
         goal_handle.succeed()
