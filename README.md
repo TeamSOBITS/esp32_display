@@ -40,7 +40,7 @@
 [SOBIT LIGHT
 ](https://github.com/TeamSOBITS/sobit_light)の頭部に搭載されているディスプレイの制御を行うものです．
 
-非通信時は目のまばたきが表示され，通信時は任意の画像を任意のときに任意の時間だけ表示可能になります．
+非通信時は目のまばたきが表示され，通信時は任意の画像を指定時間だけ表示可能になります．
 
 また，TTSとSTTの使用を自動で検知し，使用している間スピーカーやマイクの画像を表示します．
 
@@ -120,13 +120,13 @@
    ```
     - トピック名を送信する場合
     ```sh
-        topic_name = "トピック名"
+        topic_name = "/topic_name"
         file_path = ""
     ```
     - 静止画を送信する場合
     ```sh
         topic_name = ""
-        file_path = "画像ファイルの絶対パス"
+        file_path = "Absolute path of image file"
     ```
 - 画像ファイルはjpegやpngなどの形式に対応しています 
 
