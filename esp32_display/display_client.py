@@ -1,23 +1,25 @@
 import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionClient
-from sobits_interfaces.action import ChatLlmRecognition
+from builtin_interfaces.msg import Duration
+from sobits_interfaces.action import DisplayControl
 
 class DisplayActionClient(Node):
     def __init__(self):
         super().__init__('display_client')
         self._action_client = ActionClient(
             self,
-            ChatLlmRecognition,
+            DisplayControl,
             'esp32_display'
         )
         self._goal_handle = None
 
-    def send_goal(self, topic_name, file_path, seconds):
-        goal_msg = ChatLlmRecognition.Goal()
-        goal_msg.room_name = topic_name
-        goal_msg.request = file_path
-        goal_msg.model_name = seconds
+    def send_goal(self, topic_name, file_path, display_time):
+        goal_msg = DisplayControl.Goal()
+        goal_msg.topic_name = topic_name
+        goal_msg.file_path = file_path
+        goal_msg.display_time = Duration(sec=int(display_time), nanosec=0)
+
         self.get_logger().info('Waiting for display action server...')
         self._action_client.wait_for_server()
 
@@ -55,9 +57,9 @@ class DisplayActionClient(Node):
 
     def feedback_callback(self, feedback_msg):
         feedback = feedback_msg.feedback
-        self.get_logger().info(f'Feedback: {feedback.wip_result}')
+        self.get_logger().info(f'Feedback: {feedback.remaining_time.sec} seconds remaining')
         # try:
-        #     remaining = int(feedback.wip_result)
+        #     remaining = int(feedback.remaining_time.sec)
         #     if remaining == 5 and self._goal_handle is not None:
         #         self.get_logger().info("Remaining is 5 → cancel goal")
         #         self._goal_handle.cancel_goal_async()
@@ -68,15 +70,15 @@ def main(args=None):
     rclpy.init(args=args)
     client = DisplayActionClient()
 
-    topic_name = "/image_raw"
-    file_path = ""
+    # topic_name = "/image_raw"
+    # file_path = ""
 
-    # topic_name = ""
-    # file_path = "/home/ryo/colcon_ws/src/test_1.jpeg"
+    topic_name = ""
+    file_path = "/home/sobits/colcon_ws/src/esp32_display/images/speaker.jpeg"
     
-    seconds = str(input("Please enter the number of seconds to draw (integer): "))
+    display_time = int(input("Please enter the number of seconds to draw (integer): "))
 
-    client.send_goal(topic_name, file_path, seconds)
+    client.send_goal(topic_name, file_path, display_time)
     rclpy.spin(client)
 
 if __name__ == '__main__':

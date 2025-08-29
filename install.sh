@@ -24,7 +24,7 @@ SOBITS_MSGS_REPO="sobits_interfaces"
 # Check if the repository already exists
 if [ ! -d "$SOBITS_MSGS_REPO" ]; then
     echo "Cloning $SOBITS_MSGS_REPO repository..."
-    git clone -b humble-devel https://github.com/TeamSOBITS/sobits_interfaces.git
+    git clone -b feature/display_control https://github.com/TeamSOBITS/sobits_interfaces.git
     echo "$SOBITS_MSGS_REPO cloned successfully."
 else
     echo "$SOBITS_MSGS_REPO repository already exists. Skipping clone."

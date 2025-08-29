@@ -1,9 +1,10 @@
 import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionServer, CancelResponse
-from sobits_interfaces.action import ChatLlmRecognition
+from sobits_interfaces.action import DisplayControl
 from sobits_interfaces.action._text_to_speech import TextToSpeech_FeedbackMessage
 from sensor_msgs.msg import Image
+from builtin_interfaces.msg import Duration
 from cv_bridge import CvBridge, CvBridgeError
 import time
 import os
@@ -20,7 +21,6 @@ class DisplayActionServer(Node):
     def __init__(self):
         super().__init__('display_server')
 
-        # パラメータでのポート宣言を削除
         self.declare_parameter('quality', 30)
         self.declare_parameter('image_hight', 240)
         self.declare_parameter('image_width', 320)
@@ -35,7 +35,7 @@ class DisplayActionServer(Node):
 
         self._action_server = ActionServer(
             self,
-            ChatLlmRecognition,
+            DisplayControl,
             'esp32_display',
             self.execute_callback,
             cancel_callback=self.cancel_callback
@@ -86,7 +86,6 @@ class DisplayActionServer(Node):
         self.tts_send_thread.start()
 
     def _connect_to_serial(self):
-        # 試行するポートのリストを内部的に定義
         ports_to_try = ['/dev/esp32_board_a', '/dev/esp32_board_b']
         for port in ports_to_try:
             try:
@@ -211,25 +210,15 @@ class DisplayActionServer(Node):
     def execute_callback(self, goal_handle):
         self.get_logger().info('Executing goal...')
         self.is_action_active = True
-        file_path = goal_handle.request.request
-        seconds_str = goal_handle.request.model_name
-        topic_name = goal_handle.request.room_name
+        file_path = goal_handle.request.file_path
+        topic_name = goal_handle.request.topic_name
+        seconds_duration = goal_handle.request.display_time
+        total_seconds = seconds_duration.sec
 
         if self.ser is None:
             self.is_action_active = False
-            result = ChatLlmRecognition.Result()
+            result = DisplayControl.Result()
             result.result = "Serial port not available."
-            goal_handle.abort()
-            return result
-
-        try:
-            total_seconds = int(float(seconds_str))
-            if total_seconds <= 0:
-                raise ValueError
-        except Exception:
-            self.is_action_active = False
-            result = ChatLlmRecognition.Result()
-            result.result = f"Invalid seconds: {seconds_str}"
             goal_handle.abort()
             return result
 
@@ -269,7 +258,7 @@ class DisplayActionServer(Node):
             
             if goal_handle.is_cancel_requested:
                 goal_handle.canceled()
-                result = ChatLlmRecognition.Result()
+                result = DisplayControl.Result()
                 result.result = "Goal canceled"
                 return result
 
@@ -278,7 +267,7 @@ class DisplayActionServer(Node):
                 if frame is not None:
                     if not self._send_image_data(frame, self.quality):
                         goal_handle.abort()
-                        result = ChatLlmRecognition.Result()
+                        result = DisplayControl.Result()
                         result.result = "Failed to send image"
                         return result
                     self.latest_frame = None
@@ -286,27 +275,23 @@ class DisplayActionServer(Node):
                 frame = frame_getter
                 if not self._send_image_data(frame, self.quality):
                     goal_handle.abort()
-                    result = ChatLlmRecognition.Result()
+                    result = DisplayControl.Result()
                     result.result = "Failed to send image"
                     return result
 
-            # 1秒ごとにフィードバックを送信
             current_time = time.time()
             if current_time - last_feedback_time >= 1.0:
                 last_feedback_time = current_time
-                
-                # 残り時間を計算
                 elapsed_time = current_time - start_time
                 remaining_time = max(0, total_seconds - elapsed_time)
-                
-                feedback = ChatLlmRecognition.Feedback()
-                # wip_result フィールドを使って残り秒数を文字列として送信
-                feedback.wip_result = f"Remaining seconds: {int(remaining_time)}"
-                self.get_logger().info(f"Publishing feedback: {feedback.wip_result}")
+
+                feedback = DisplayControl.Feedback()
+                feedback.remaining_time = Duration(sec=int(remaining_time), nanosec=0)
+                self.get_logger().info(f"Publishing feedback: Remaining seconds: {int(remaining_time)}")
                 goal_handle.publish_feedback(feedback)
 
         goal_handle.succeed()
-        result = ChatLlmRecognition.Result()
+        result = DisplayControl.Result()
         result.result = "Successed"
         return result
 
@@ -323,6 +308,15 @@ def main(args=None):
         while rclpy.ok():
             rclpy.spin_once(server)
     finally:
+        server.stop_threads.set()
+        if server.pulse is not None:
+            server.pulse.event_listen_stop()
+            server.pulse_thread.join()
+        if server.mic_send_thread.is_alive():
+            server.mic_send_thread.join()
+        if server.tts_send_thread.is_alive():
+            server.tts_send_thread.join()
+        
         server.destroy_node()
         rclpy.shutdown()
 
