@@ -86,7 +86,12 @@ class DisplayActionServer(Node):
         self.tts_send_thread.start()
 
     def _connect_to_serial(self):
-        ports_to_try = ['/dev/ttyACM0']
+        ports_to_try = [
+            '/dev/ttyACM0', 
+            '/dev/ttyACM1', 
+            '/dev/ttyUSB0', 
+            '/dev/ttyUSB1'
+        ]
         for port in ports_to_try:
             try:
                 self.get_logger().info(f"Trying to connect to serial port {port}...")
