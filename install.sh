@@ -14,12 +14,12 @@ export DEBIAN_FRONTEND=noninteractive # Skip interactive apt prompts
 sudo apt update -y
 
 # Install apt packages one by one, automatically answering 'yes' to prompts
-yes | sudo apt install -y ros-humble-vision-msgs
+yes | sudo apt install -y ros-${ROS_DISTRO}-vision-msgs
 echo "System dependencies installed."
 
 # --- Python Package Installation ---
 echo "--- Installing Python dependencies ---"
-pip3 install pulsectl pyserial
+pip3 install pulsectl pyserial --break-system-package
 
 cd ..
 
