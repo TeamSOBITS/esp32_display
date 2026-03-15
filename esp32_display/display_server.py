@@ -86,20 +86,21 @@ class DisplayActionServer(Node):
         self.tts_send_thread.start()
 
     def _connect_to_serial(self):
-        ports_to_try = [
-            '/dev/ttyACM0', 
-            '/dev/ttyACM1', 
-            '/dev/ttyUSB0', 
-            '/dev/ttyUSB1'
-        ]
-        for port in ports_to_try:
-            try:
-                self.get_logger().info(f"Trying to connect to serial port {port}...")
-                ser = serial.Serial(port, BAUDRATE, timeout=1)
-                self.get_logger().info(f"Connected to serial port {port}.")
-                return ser
-            except serial.SerialException as e:
-                self.get_logger().warn(f"Could not connect to {port}: {e}")
+
+        # serial port unique name: SOBIT MINI
+        target_port = '/dev/serial/by-id/usb-Espressif_USB_JTAG_serial_debug_unit_30:ED:A0:A8:A4:DC-if00'
+        
+        # serial port unique name: SOBIT LIGHT
+        # target_port = '/dev/serial/by-id/usb-Espressif_USB_JTAG_serial_debug_unit_74:4D:BD:7F:1B:28-if00'
+
+
+        try:
+            self.get_logger().info(f"Connecting to target device: {target_port}")
+            return serial.Serial(target_port, BAUDRATE, timeout=1)
+        except serial.SerialException as e:
+            self.get_logger().error(f"Failed to connect to target device: {e}")
+
+    
         return None
 
     def __del__(self):
@@ -123,9 +124,7 @@ class DisplayActionServer(Node):
             self.last_remaining_time = fb.remaining_time
             goal_id_bytes = bytes(msg.goal_id.uuid)
             goal_id_hex = goal_id_bytes.hex()
-            self.get_logger().info(
-                f"[TTS] Remaining time={fb.remaining_time:.2f}s"
-            )
+            self.get_logger().info(f"[TTS] Remaining time={fb.remaining_time:.2f}s")
 
     def _tts_send_loop(self):
         while not self.stop_threads.is_set():
@@ -259,7 +258,7 @@ class DisplayActionServer(Node):
         last_feedback_time = start_time
         
         while time.time() - start_time < total_seconds:
-            rclpy.spin_once(self, timeout_sec=0.01)
+            # rclpy.spin_once(self, timeout_sec=0.01)
             
             if goal_handle.is_cancel_requested:
                 goal_handle.canceled()
