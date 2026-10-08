@@ -44,6 +44,9 @@
 
 また，TTSとSTTの使用を自動で検知し，使用している間スピーカーやマイクの画像を表示します．
 
+<p align="center">
+  <img src="images/eye.gif" alt="非通信時の目のまばたき" width="640">
+</p>
 
 <p align="right">(<a href="#readme-top">上に戻る</a>)</p>
 
@@ -58,9 +61,9 @@
 
 | System  | Version |
 | ------------- | ------------- |
-| Ubuntu | 22.04 (Jammy Jellyfish) |
-| ROS | Humble Hawksbill |
-| Python | 3.10 |
+| Ubuntu | 24.04 (Noble Numbat) |
+| ROS | Jazzy Jalisco |
+| Python | 3.12 |
 
 <p align="right">(<a href="#readme-top">上に戻る</a>)</p>
 
@@ -72,7 +75,7 @@
    ```
 2. 本レポジトリをcloneします．
    ```sh
-   git clone -b humble-devel https://github.com/TeamSOBITS/esp32_display.git
+   git clone -b jazzy-devel https://github.com/TeamSOBITS/esp32_display.git
    ```
 3. レポジトリの中へ移動します．
    ```sh
@@ -100,34 +103,36 @@
 ## 実行・操作方法
 以下のモードを使用可能です．
 
-|モード | 説明 | 発動条件 |
-| --- | --- | --- |
-| まばたき表示 | 目のまばたきを表示します | ESP32への電源供給 |
-| マイク画像表示 | 音声認識時にマイクの使用を自動で検出しマイク画像を表示します | [esp32_display.launch.py](launch/esp32_display.launch.py)の起動|
-| スピーカー画像表示 | [Sobits TTS](https://github.com/TeamSOBITS/sobits_tts)使用時に発話を自動で検出しスピーカー画像を表示します | [esp32_display.launch.py](launch/esp32_display.launch.py)の起動
-| 静止画像表示 | 画像の絶対パスと表示させたい秒数を送信することで，指定秒数だけ表示させる．(任意のタイミングでキャンセル可能) | [esp32_display.launch.py](launch/esp32_display.launch.py)，[display_client.py](esp32_display/display_client.py)の起動|
-| 画像トピック表示 | 画像のトピック名と表示させたい秒数を送信することで，指定秒数だけ表示させる．(任意のタイミングでキャンセル可能) | [esp32_display.launch.py](launch/esp32_display.launch.py)，[display_client.py](esp32_display/display_client.py)の起動|
+| モード | 説明 | 発動条件 | 表示例 |
+| --- | --- | --- | --- |
+| まばたき表示 | 目のまばたきを表示します | ESP32への電源供給 | <img src="images/eye.gif" alt="まばたき" width="160"> |
+| マイク画像表示 | 音声認識時にマイクの使用を自動で検出しマイク画像を表示します | [esp32_display.launch.py](launch/esp32_display.launch.py)の起動 | <img src="images/mic.jpeg" alt="マイク" width="160"> |
+| スピーカー画像表示 | [Sobits TTS](https://github.com/TeamSOBITS/sobits_tts)使用時に発話を自動で検出しスピーカー画像を表示します | [esp32_display.launch.py](launch/esp32_display.launch.py)の起動 | <img src="images/speaker.jpeg" alt="スピーカー" width="160"> |
+| 静止画像表示 | 画像の絶対パスと表示させたい秒数を送信することで，指定秒数だけ表示します．(任意のタイミングでキャンセル可能) | [esp32_display.launch.py](launch/esp32_display.launch.py)，[display_client.py](esp32_display/display_client.py)の起動 | - |
+| 画像トピック表示 | 画像のトピック名と表示させたい秒数を送信することで，指定秒数だけ表示します．(任意のタイミングでキャンセル可能) | [esp32_display.launch.py](launch/esp32_display.launch.py)，[display_client.py](esp32_display/display_client.py)の起動 | - |
 
 1. esp32と接続
 2. [esp32_display.launch.py](launch/esp32_display.launch.py)を起動
    ```sh
    ros2 launch esp32_display esp32_display.launch.py
    ```
-3. [display_client.py](esp32_display/display_client.py)を起動
+3. [display_client.py](esp32_display/display_client.py)の`main()`内にある`topic_name`と`file_path`を，表示したい内容に合わせて書き換えます．
+   - 画像トピックを表示する場合は，`topic_name`にトピック名を，`file_path`に空文字を指定します．
+     ```python
+     topic_name = "/topic_name"
+     file_path = ""
+     ```
+   - 静止画を表示する場合は，`topic_name`に空文字を，`file_path`に画像ファイルの絶対パスを指定します．
+     ```python
+     topic_name = ""
+     file_path = "/absolute/path/to/image.jpeg"
+     ```
+4. [display_client.py](esp32_display/display_client.py)を起動します．表示する秒数を聞かれるので，整数で入力します．
    ```sh
-   ros2 run esp32_display display_client.py
+   ros2 run esp32_display display_client
    ```
-    - トピック名を送信する場合
-    ```sh
-        topic_name = "/topic_name"
-        file_path = ""
-    ```
-    - 静止画を送信する場合
-    ```sh
-        topic_name = ""
-        file_path = "Absolute path of image file"
-    ```
-- 画像ファイルはjpegやpngなどの形式に対応しています 
+
+- 画像ファイルはjpegやpngなどの形式に対応しています．
 
 <p align="right">(<a href="#readme-top">上に戻る</a>)</p>
 
@@ -141,14 +146,14 @@
 | image_width | ディスプレイに描画する画像の幅 | 320 |
 
 
- <p align="right">(<a href="#readme-top">上に戻る</a>)</p>
- 
+<p align="right">(<a href="#readme-top">上に戻る</a>)</p>
+
 
 <!-- マイルストーン -->
 ## マイルストーン
 - 人検出し瞳孔を追従させる機能追加
 
-現時点のバッグや新規機能の依頼を確認するために[Issueページ](issues-url) をご覧ください．
+現時点のバグや新規機能の依頼を確認するために[Issueページ][issues-url]をご覧ください．
 
 <p align="right">(<a href="#readme-top">上に戻る</a>)</p>
 
